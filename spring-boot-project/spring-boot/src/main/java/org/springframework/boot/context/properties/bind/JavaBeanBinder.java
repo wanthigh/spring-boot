@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.springframework.boot.context.properties.bind;
 import java.beans.Introspector;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -45,6 +46,7 @@ import org.springframework.core.ResolvableType;
  *
  * @author Phillip Webb
  * @author Madhura Bhave
+ * @author Lasse Wulff
  */
 class JavaBeanBinder implements DataObjectBinder {
 
@@ -91,7 +93,7 @@ class JavaBeanBinder implements DataObjectBinder {
 
 	private <T> boolean bind(BeanSupplier<T> beanSupplier, DataObjectPropertyBinder propertyBinder,
 			BeanProperty property) {
-		String propertyName = property.getName();
+		String propertyName = determinePropertyName(property);
 		ResolvableType type = property.getType();
 		Supplier<Object> value = property.getValue(beanSupplier);
 		Annotation[] annotations = property.getAnnotations();
@@ -107,6 +109,15 @@ class JavaBeanBinder implements DataObjectBinder {
 			throw new IllegalStateException("No setter found for property: " + property.getName());
 		}
 		return true;
+	}
+
+	private String determinePropertyName(BeanProperty property) {
+		return Arrays.stream((property.getAnnotations() != null) ? property.getAnnotations() : new Annotation[0])
+			.filter((annotation) -> annotation.annotationType() == Name.class)
+			.findFirst()
+			.map(Name.class::cast)
+			.map(Name::value)
+			.orElse(property.getName());
 	}
 
 	/**
@@ -382,9 +393,18 @@ class JavaBeanBinder implements DataObjectBinder {
 					return this.getter.invoke(instance.get());
 				}
 				catch (Exception ex) {
+					if (isUninitializedKotlinProperty(ex)) {
+						return null;
+					}
 					throw new IllegalStateException("Unable to get value for property " + this.name, ex);
 				}
 			};
+		}
+
+		private boolean isUninitializedKotlinProperty(Exception ex) {
+			return (ex instanceof InvocationTargetException invocationTargetException)
+					&& "kotlin.UninitializedPropertyAccessException"
+						.equals(invocationTargetException.getTargetException().getClass().getName());
 		}
 
 		boolean isSettable() {

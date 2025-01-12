@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -133,8 +133,17 @@ class AotTests {
 	}
 
 	@TestTemplate
-	void whenAotRunsSourcesAreCompiled(MavenBuild mavenBuild) {
+	void whenAotRunsSourcesAreCompiledAndMovedToTargetClasses(MavenBuild mavenBuild) {
 		mavenBuild.project("aot").goals("package").execute((project) -> {
+			Path classesDirectory = project.toPath().resolve("target/classes");
+			assertThat(collectRelativePaths(classesDirectory))
+				.contains(Path.of("org", "test", "SampleApplication__ApplicationContextInitializer.class"));
+		});
+	}
+
+	@TestTemplate
+	void whenAotRunsWithModuleInfoSourcesAreCompiledAndMovedToTargetClass(MavenBuild mavenBuild) {
+		mavenBuild.project("aot-module-info").goals("package").execute((project) -> {
 			Path classesDirectory = project.toPath().resolve("target/classes");
 			assertThat(collectRelativePaths(classesDirectory))
 				.contains(Path.of("org", "test", "SampleApplication__ApplicationContextInitializer.class"));
@@ -173,15 +182,6 @@ class AotTests {
 					"org.springframework.boot.maven.it", "aot-test", "reflect-config.json"));
 			assertThat(collectRelativePaths(testClassesDirectory)).contains(Path.of("org", "test",
 					"SampleApplicationTests__TestContext001_ApplicationContextInitializer.class"));
-		});
-	}
-
-	@TestTemplate
-	void whenAotWithDevelopmentOnlyExclusions(MavenBuild mavenBuild) {
-		mavenBuild.project("aot-development-only-exclusions").goals("package").execute((project) -> {
-			Path aotDirectory = project.toPath().resolve("target/spring-aot/main");
-			assertThat(collectRelativePaths(aotDirectory.resolve("sources")))
-				.contains(Path.of("org", "test", "SampleApplication__ApplicationContextInitializer.java"));
 		});
 	}
 
