@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ import jakarta.validation.ValidatorFactory;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Aspect;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.aop.support.AopUtils;
@@ -51,6 +52,8 @@ import org.springframework.boot.autoconfigure.task.TaskExecutionAutoConfiguratio
 import org.springframework.boot.autoconfigure.validation.ValidationAutoConfiguration;
 import org.springframework.boot.autoconfigure.validation.ValidatorAdapter;
 import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfiguration.WebMvcAutoConfigurationAdapter;
+import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfigurationTests.OrderedControllerAdviceBeansConfiguration.HighestOrderedControllerAdvice;
+import org.springframework.boot.autoconfigure.web.servlet.WebMvcAutoConfigurationTests.OrderedControllerAdviceBeansConfiguration.LowestOrderedControllerAdvice;
 import org.springframework.boot.test.context.assertj.AssertableWebApplicationContext;
 import org.springframework.boot.test.context.runner.ContextConsumer;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -65,6 +68,8 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
@@ -89,6 +94,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.FormContentFilter;
 import org.springframework.web.filter.HiddenHttpMethodFilter;
 import org.springframework.web.filter.RequestContextFilter;
+import org.springframework.web.method.ControllerAdviceBean;
 import org.springframework.web.servlet.DispatcherServlet;
 import org.springframework.web.servlet.FlashMap;
 import org.springframework.web.servlet.FlashMapManager;
@@ -96,6 +102,7 @@ import org.springframework.web.servlet.HandlerAdapter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.servlet.LocaleResolver;
+import org.springframework.web.servlet.RequestToViewNameTranslator;
 import org.springframework.web.servlet.View;
 import org.springframework.web.servlet.ViewResolver;
 import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
@@ -130,6 +137,7 @@ import org.springframework.web.servlet.support.AbstractFlashMapManager;
 import org.springframework.web.servlet.support.SessionFlashMapManager;
 import org.springframework.web.servlet.view.AbstractView;
 import org.springframework.web.servlet.view.ContentNegotiatingViewResolver;
+import org.springframework.web.servlet.view.DefaultRequestToViewNameTranslator;
 import org.springframework.web.util.UrlPathHelper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -229,7 +237,7 @@ class WebMvcAutoConfigurationTests {
 	@Test
 	void resourceHandlerMappingDisabled() {
 		this.contextRunner.withPropertyValues("spring.web.resources.add-mappings:false")
-			.run((context) -> assertThat(getResourceMappingLocations(context)).hasSize(0));
+			.run((context) -> assertThat(getResourceMappingLocations(context)).isEmpty());
 	}
 
 	@Test
@@ -381,29 +389,6 @@ class WebMvcAutoConfigurationTests {
 	}
 
 	@Test
-	@Deprecated(since = "3.0.0", forRemoval = true)
-	@SuppressWarnings("deprecation")
-	void customThemeResolverWithMatchingNameReplacesDefaultThemeResolver() {
-		this.contextRunner.withBean("themeResolver", CustomThemeResolver.class, CustomThemeResolver::new)
-			.run((context) -> {
-				assertThat(context).hasSingleBean(org.springframework.web.servlet.ThemeResolver.class);
-				assertThat(context.getBean("themeResolver")).isInstanceOf(CustomThemeResolver.class);
-			});
-	}
-
-	@Test
-	@Deprecated(since = "3.0.0", forRemoval = true)
-	@SuppressWarnings("deprecation")
-	void customThemeResolverWithDifferentNameDoesNotReplaceDefaultThemeResolver() {
-		this.contextRunner.withBean("customThemeResolver", CustomThemeResolver.class, CustomThemeResolver::new)
-			.run((context) -> {
-				assertThat(context.getBean("customThemeResolver")).isInstanceOf(CustomThemeResolver.class);
-				assertThat(context.getBean("themeResolver"))
-					.isInstanceOf(org.springframework.web.servlet.theme.FixedThemeResolver.class);
-			});
-	}
-
-	@Test
 	void customFlashMapManagerWithMatchingNameReplacesDefaultFlashMapManager() {
 		this.contextRunner.withBean("flashMapManager", CustomFlashMapManager.class, CustomFlashMapManager::new)
 			.run((context) -> {
@@ -418,6 +403,26 @@ class WebMvcAutoConfigurationTests {
 			.run((context) -> {
 				assertThat(context.getBean("customFlashMapManager")).isInstanceOf(CustomFlashMapManager.class);
 				assertThat(context.getBean("flashMapManager")).isInstanceOf(SessionFlashMapManager.class);
+			});
+	}
+
+	@Test
+	void customViewNameTranslatorWithMatchingNameReplacesDefaultViewNameTranslator() {
+		this.contextRunner.withBean("viewNameTranslator", CustomViewNameTranslator.class, CustomViewNameTranslator::new)
+			.run((context) -> {
+				assertThat(context).hasSingleBean(RequestToViewNameTranslator.class);
+				assertThat(context.getBean("viewNameTranslator")).isInstanceOf(CustomViewNameTranslator.class);
+			});
+	}
+
+	@Test
+	void customViewNameTranslatorWithDifferentNameDoesNotReplaceDefaultViewNameTranslator() {
+		this.contextRunner
+			.withBean("customViewNameTranslator", CustomViewNameTranslator.class, CustomViewNameTranslator::new)
+			.run((context) -> {
+				assertThat(context.getBean("customViewNameTranslator")).isInstanceOf(CustomViewNameTranslator.class);
+				assertThat(context.getBean("viewNameTranslator"))
+					.isInstanceOf(DefaultRequestToViewNameTranslator.class);
 			});
 	}
 
@@ -491,21 +496,6 @@ class WebMvcAutoConfigurationTests {
 			.run((context) -> assertThat(
 					context.getBean(WebMvcAutoConfigurationAdapter.class).getMessageCodesResolver())
 				.isNotNull());
-	}
-
-	@Test
-	void ignoreDefaultModelOnRedirectIsTrue() {
-		this.contextRunner.run((context) -> assertThat(context.getBean(RequestMappingHandlerAdapter.class))
-			.extracting("ignoreDefaultModelOnRedirect")
-			.isEqualTo(true));
-	}
-
-	@Test
-	void overrideIgnoreDefaultModelOnRedirect() {
-		this.contextRunner.withPropertyValues("spring.mvc.ignore-default-model-on-redirect:false")
-			.run((context) -> assertThat(context.getBean(RequestMappingHandlerAdapter.class))
-				.extracting("ignoreDefaultModelOnRedirect")
-				.isEqualTo(false));
 	}
 
 	@Test
@@ -1010,6 +1000,17 @@ class WebMvcAutoConfigurationTests {
 				.hasSingleBean(CustomExceptionHandler.class));
 	}
 
+	@Test
+	void problemDetailsExceptionHandlerIsOrderedAt0() {
+		this.contextRunner.withPropertyValues("spring.mvc.problemdetails.enabled:true")
+			.withUserConfiguration(OrderedControllerAdviceBeansConfiguration.class)
+			.run((context) -> assertThat(
+					ControllerAdviceBean.findAnnotatedBeans(context).stream().map(ControllerAdviceBean::getBeanType))
+				.asInstanceOf(InstanceOfAssertFactories.list(Class.class))
+				.containsExactly(HighestOrderedControllerAdvice.class, ProblemDetailsExceptionHandler.class,
+						OrderedControllerAdviceBeansConfiguration.LowestOrderedControllerAdvice.class));
+	}
+
 	private void assertResourceHttpRequestHandler(AssertableWebApplicationContext context,
 			Consumer<ResourceHttpRequestHandler> handlerConsumer) {
 		Map<String, Object> handlerMap = getHandlerMap(context.getBean("resourceHandlerMapping", HandlerMapping.class));
@@ -1464,20 +1465,6 @@ class WebMvcAutoConfigurationTests {
 
 	}
 
-	@Deprecated(since = "3.0.0", forRemoval = true)
-	static class CustomThemeResolver implements org.springframework.web.servlet.ThemeResolver {
-
-		@Override
-		public String resolveThemeName(HttpServletRequest request) {
-			return "custom";
-		}
-
-		@Override
-		public void setThemeName(HttpServletRequest request, HttpServletResponse response, String themeName) {
-		}
-
-	}
-
 	static class CustomFlashMapManager extends AbstractFlashMapManager {
 
 		@Override
@@ -1489,6 +1476,15 @@ class WebMvcAutoConfigurationTests {
 		protected void updateFlashMaps(List<FlashMap> flashMaps, HttpServletRequest request,
 				HttpServletResponse response) {
 
+		}
+
+	}
+
+	static class CustomViewNameTranslator implements RequestToViewNameTranslator {
+
+		@Override
+		public String getViewName(HttpServletRequest requestAttributes) {
+			return null;
 		}
 
 	}
@@ -1544,6 +1540,24 @@ class WebMvcAutoConfigurationTests {
 		@Bean
 		CustomExceptionHandler customExceptionHandler() {
 			return new CustomExceptionHandler();
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@Import({ LowestOrderedControllerAdvice.class, HighestOrderedControllerAdvice.class })
+	static class OrderedControllerAdviceBeansConfiguration {
+
+		@ControllerAdvice
+		@Order
+		static class LowestOrderedControllerAdvice {
+
+		}
+
+		@ControllerAdvice
+		@Order(Ordered.HIGHEST_PRECEDENCE)
+		static class HighestOrderedControllerAdvice {
+
 		}
 
 	}

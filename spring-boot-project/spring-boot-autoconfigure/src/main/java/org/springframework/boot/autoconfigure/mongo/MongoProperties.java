@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @author Safeer Ansari
  * @since 1.0.0
  */
-@ConfigurationProperties(prefix = "spring.data.mongodb")
+@ConfigurationProperties("spring.data.mongodb")
 public class MongoProperties {
 
 	/**
@@ -69,12 +69,12 @@ public class MongoProperties {
 	private List<String> additionalHosts;
 
 	/**
-	 * Mongo database URI. Overrides host, port, username, password, and database.
+	 * Mongo database URI. Overrides host, port, username, and password.
 	 */
 	private String uri;
 
 	/**
-	 * Database name.
+	 * Database name. Overrides database in URI.
 	 */
 	private String database;
 

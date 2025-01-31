@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.EnableMBeanExport;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.assertj.core.api.Assertions.fail;
 
 /**
  * Tests for {@link TomcatDataSourceConfiguration}.
@@ -141,7 +141,7 @@ class TomcatDataSourceConfigurationTests {
 	static class TomcatDataSourceConfiguration {
 
 		@Bean
-		@ConfigurationProperties(prefix = "spring.datasource.tomcat")
+		@ConfigurationProperties("spring.datasource.tomcat")
 		DataSource dataSource() {
 			return DataSourceBuilder.create().type(org.apache.tomcat.jdbc.pool.DataSource.class).build();
 		}

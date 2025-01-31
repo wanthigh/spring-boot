@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,8 +28,11 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import org.springframework.beans.factory.ListableBeanFactory;
+import org.springframework.beans.factory.aot.BeanRegistrationExcludeFilter;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.beans.factory.support.RegisteredBean;
 import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.boot.autoconfigure.container.ContainerImageMetadata;
 import org.springframework.boot.autoconfigure.service.connection.ConnectionDetails;
 import org.springframework.boot.autoconfigure.service.connection.ConnectionDetailsFactories;
 import org.springframework.boot.autoconfigure.service.connection.ConnectionDetailsFactoryNotFoundException;
@@ -98,11 +101,15 @@ class ConnectionDetailsRegistrar {
 					Arrays.asList(existingBeans))));
 			return;
 		}
+		ContainerImageMetadata containerMetadata = new ContainerImageMetadata(source.getContainerImageName());
 		String beanName = getBeanName(source, connectionDetails);
 		Class<T> beanType = (Class<T>) connectionDetails.getClass();
 		Supplier<T> beanSupplier = () -> (T) connectionDetails;
 		logger.debug(LogMessage.of(() -> "Registering '%s' for %s".formatted(beanName, source)));
-		registry.registerBeanDefinition(beanName, new RootBeanDefinition(beanType, beanSupplier));
+		RootBeanDefinition beanDefinition = new RootBeanDefinition(beanType, beanSupplier);
+		beanDefinition.setAttribute(ServiceConnection.class.getName(), true);
+		containerMetadata.addTo(beanDefinition);
+		registry.registerBeanDefinition(beanName, beanDefinition);
 	}
 
 	private String getBeanName(ContainerConnectionSource<?> source, ConnectionDetails connectionDetails) {
@@ -111,6 +118,15 @@ class ConnectionDetailsRegistrar {
 		parts.add("for");
 		parts.add(source.getBeanNameSuffix());
 		return StringUtils.uncapitalize(parts.stream().map(StringUtils::capitalize).collect(Collectors.joining()));
+	}
+
+	class ServiceConnectionBeanRegistrationExcludeFilter implements BeanRegistrationExcludeFilter {
+
+		@Override
+		public boolean isExcludedFromAotProcessing(RegisteredBean registeredBean) {
+			return registeredBean.getMergedBeanDefinition().getAttribute(ServiceConnection.class.getName()) != null;
+		}
+
 	}
 
 }

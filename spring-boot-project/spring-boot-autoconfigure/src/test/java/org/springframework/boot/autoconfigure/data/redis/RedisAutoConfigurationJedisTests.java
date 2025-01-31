@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2023 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,14 +19,18 @@ package org.springframework.boot.autoconfigure.data.redis;
 import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledForJreRange;
+import org.junit.jupiter.api.condition.JRE;
 
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.ssl.SslAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.testsupport.assertj.SimpleAsyncTaskExecutorAssert;
 import org.springframework.boot.testsupport.classpath.ClassPathExclusions;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.jedis.JedisClientConfiguration.JedisClientConfigurationBuilder;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
@@ -152,14 +156,17 @@ class RedisAutoConfigurationJedisTests {
 					"spring.data.redis.jedis.pool.max-idle:4", "spring.data.redis.jedis.pool.max-active:16",
 					"spring.data.redis.jedis.pool.max-wait:2000",
 					"spring.data.redis.jedis.pool.time-between-eviction-runs:30000")
+			.withUserConfiguration(JedisDisableStartupConfiguration.class)
 			.run((context) -> {
 				JedisConnectionFactory cf = context.getBean(JedisConnectionFactory.class);
 				assertThat(cf.getHostName()).isEqualTo("foo");
-				assertThat(cf.getPoolConfig().getMinIdle()).isOne();
-				assertThat(cf.getPoolConfig().getMaxIdle()).isEqualTo(4);
-				assertThat(cf.getPoolConfig().getMaxTotal()).isEqualTo(16);
-				assertThat(cf.getPoolConfig().getMaxWaitDuration()).isEqualTo(Duration.ofSeconds(2));
-				assertThat(cf.getPoolConfig().getDurationBetweenEvictionRuns()).isEqualTo(Duration.ofSeconds(30));
+				assertThat(cf.getPoolConfig()).satisfies((poolConfig) -> {
+					assertThat(poolConfig.getMinIdle()).isOne();
+					assertThat(poolConfig.getMaxIdle()).isEqualTo(4);
+					assertThat(poolConfig.getMaxTotal()).isEqualTo(16);
+					assertThat(poolConfig.getMaxWaitDuration()).isEqualTo(Duration.ofSeconds(2));
+					assertThat(poolConfig.getDurationBetweenEvictionRuns()).isEqualTo(Duration.ofSeconds(30));
+				});
 			});
 	}
 
@@ -270,6 +277,25 @@ class RedisAutoConfigurationJedisTests {
 			});
 	}
 
+	@Test
+	void shouldUsePlatformThreadsByDefault() {
+		this.contextRunner.run((context) -> {
+			JedisConnectionFactory factory = context.getBean(JedisConnectionFactory.class);
+			assertThat(factory).extracting("executor").isNull();
+		});
+	}
+
+	@Test
+	@EnabledForJreRange(min = JRE.JAVA_21)
+	void shouldUseVirtualThreadsIfEnabled() {
+		this.contextRunner.withPropertyValues("spring.threads.virtual.enabled=true").run((context) -> {
+			JedisConnectionFactory factory = context.getBean(JedisConnectionFactory.class);
+			assertThat(factory).extracting("executor")
+				.satisfies((executor) -> SimpleAsyncTaskExecutorAssert.assertThat((SimpleAsyncTaskExecutor) executor)
+					.usesVirtualThreads());
+		});
+	}
+
 	private String getUserName(JedisConnectionFactory factory) {
 		return ReflectionTestUtils.invokeMethod(factory, "getRedisUsername");
 	}
@@ -333,6 +359,27 @@ class RedisAutoConfigurationJedisTests {
 				connectionFactory = jedisConnectionFactory;
 			}
 			return bean;
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class JedisDisableStartupConfiguration {
+
+		@Bean
+		static BeanPostProcessor jedisDisableStartup() {
+			return new BeanPostProcessor() {
+
+				@Override
+				public Object postProcessBeforeInitialization(Object bean, String beanName) {
+					if (bean instanceof JedisConnectionFactory jedisConnectionFactory) {
+						jedisConnectionFactory.setEarlyStartup(false);
+						jedisConnectionFactory.setAutoStartup(false);
+					}
+					return bean;
+				}
+
+			};
 		}
 
 	}
